@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 class YouTubeFeedExpanderBridge extends FeedExpander
 {
     const NAME = 'YouTube Feed Expander';
@@ -16,35 +18,43 @@ class YouTubeFeedExpanderBridge extends FeedExpander
         'embed' => [
             'name' => 'Add embed to entry',
             'type' => 'checkbox',
-            'required' => false,
             'title' => 'Add embed to entry',
             'defaultValue' => 'checked',
         ],
         'embedurl' => [
             'name' => 'Use embed page as entry url',
             'type' => 'checkbox',
-            'required' => false,
             'title' => 'Use embed page as entry url',
         ],
         'nocookie' => [
             'name' => 'Use nocookie embed page',
             'type' => 'checkbox',
-            'required' => false,
             'title' => 'Use nocookie embed page'
         ],
+        'hideshorts' => [
+            'name' => 'Hide shorts',
+            'type' => 'checkbox',
+            'title' => 'Hide shorts'
+        ]
     ]];
 
     public function getIcon()
     {
+        $cacheKey = 'icon_' . $this->getInput('channel');
+        $icon = $this->loadCacheValue($cacheKey);
+        if ($icon) {
+            return $icon;
+        }
+
         if ($this->getInput('channel') != null) {
             $html = getSimpleHTMLDOMCached($this->getURI());
-            $scriptRegex = '/var ytInitialData = (.*?);<\/script>/';
-            $result = preg_match($scriptRegex, $html, $matches);
-            if (isset($matches[1])) {
-                $json = json_decode($matches[1]);
-                return $json->metadata->channelMetadataRenderer->avatar->thumbnails[0]->url;
+            $thumbnail = $html->find('[itemprop="thumbnailUrl"]', 0);
+            if ($thumbnail) {
+                $this->saveCacheValue($cacheKey, $thumbnail->href);
+                return $thumbnail->href;
             }
         }
+
         return parent::getIcon();
     }
 
@@ -56,6 +66,10 @@ class YouTubeFeedExpanderBridge extends FeedExpander
 
     protected function parseItem(array $item)
     {
+        if ($this->getInput('hideshorts') && str_contains($item['uri'], '/shorts/')) {
+            return;
+        }
+
         $id = $item['yt']['videoId'];
         $item['comments'] = $item['uri'] . '#comments';
         $item['uid'] = $item['id'];
@@ -73,8 +87,7 @@ class YouTubeFeedExpanderBridge extends FeedExpander
         }
         $embed = $embedURI . 'embed/' . $id;
         if ($this->getInput('embed')) {
-            $iframe_fmt = '<iframe width="448" height="350" src="%s" title="%s" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'; //phpcs:ignore
-            $iframe = sprintf($iframe_fmt, $embed, $item['title']) . '<br>';
+            $iframe = handleYoutube($id) . '<br>';
             $item['content'] = $iframe . $item['content'];
         }
         if ($this->getInput('embedurl')) {
@@ -84,3 +97,4 @@ class YouTubeFeedExpanderBridge extends FeedExpander
         return $item;
     }
 }
+

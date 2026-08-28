@@ -3,7 +3,7 @@
 class ZeitBridge extends FeedExpander
 {
     const MAINTAINER = 'Mynacol';
-    const NAME = 'Zeit Online Bridge';
+    const NAME = 'Zeit Online';
     const URI = 'https://www.zeit.de/';
     const CACHE_TIMEOUT = 1800; // 30min
     const DESCRIPTION = 'Returns the full articles instead of only the intro';
@@ -89,7 +89,8 @@ class ZeitBridge extends FeedExpander
             $article->find(
                 'aside, .visually-hidden, .carousel-container, #tickaroo-liveblog, .zplus-badge,
                 .article-heading__container--podcast, .podcast-player__image, div[data-paywall],
-                .js-embed-consent, script, nav, .article-flexible-toc__subheading-link, .faq-link'
+                .js-embed-consent, script, nav, .article-flexible-toc__subheading-link, .faq-link,
+                .zoner-article-magazinbox'
             ) as $bad
         ) {
             $bad->remove();
@@ -118,6 +119,11 @@ class ZeitBridge extends FeedExpander
         }
 
         $item['content'] = '';
+        // advertorial marker
+        $advert = $article->find('.advertorial-marker', 0);
+        if ($advert) {
+            $item['content'] .= $advert;
+        }
 
         // summary
         $summary = $article->find('.summary');

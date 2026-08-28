@@ -8,7 +8,7 @@
 class RedditBridge extends BridgeAbstract
 {
     const MAINTAINER = 'dawidsowa';
-    const NAME = 'Reddit Bridge';
+    const NAME = 'Reddit';
     const URI = 'https://old.reddit.com';
     const CACHE_TIMEOUT = 60 * 60 * 2; // 2h
     const DESCRIPTION = 'Return hot submissions from Reddit';
@@ -116,12 +116,12 @@ class RedditBridge extends BridgeAbstract
     {
         $forbiddenKey = 'reddit_forbidden';
         if ($this->cache->get($forbiddenKey)) {
-            throw new RateLimitException();
+            throwRateLimitException();
         }
 
         $rateLimitKey = 'reddit_rate_limit';
         if ($this->cache->get($rateLimitKey)) {
-            throw new RateLimitException();
+            throwRateLimitException();
         }
 
         try {
@@ -131,10 +131,10 @@ class RedditBridge extends BridgeAbstract
                 // 403 Forbidden
                 // This can possibly mean that reddit has permanently blocked this server's ip address
                 $this->cache->set($forbiddenKey, true, 60 * 61);
-                throw new RateLimitException();
+                throwRateLimitException();
             } elseif ($e->getCode() === 429) {
                 $this->cache->set($rateLimitKey, true, 60 * 61);
-                throw new RateLimitException();
+                throwRateLimitException();
             }
             throw $e;
         }
@@ -280,8 +280,7 @@ class RedditBridge extends BridgeAbstract
                     }
                 } elseif (isset($data->media) && $data->media->type == 'youtube.com') {
                     // Youtube link
-                    $item['content'] = $this->createFigureLink($data->url, $data->media->oembed->thumbnail_url, 'YouTube');
-                    //$item['content'] = htmlspecialchars_decode($data->media->oembed->html);
+                    $item['content'] = handleYoutube($data->url);
                 } elseif (explode('.', $data->domain)[0] == 'self') {
                     // Crossposted text post
                     // TODO (optionally?) Fetch content of the original post.

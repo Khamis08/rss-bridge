@@ -3,7 +3,7 @@
 class KleinanzeigenBridge extends BridgeAbstract
 {
     const MAINTAINER = 'knrdl';
-    const NAME = 'Kleinanzeigen Bridge';
+    const NAME = 'Kleinanzeigen';
     const URI = 'https://www.kleinanzeigen.de';
     const CACHE_TIMEOUT = 3600; // 1h
     const DESCRIPTION = '(ebay) Kleinanzeigen';
@@ -50,6 +50,13 @@ class KleinanzeigenBridge extends BridgeAbstract
                 'type' => 'number',
                 'title' => 'how many pages to fetch',
                 'defaultValue' => 2,
+            ],
+            'buyNowEnabled' => [
+                'name' => 'buyItNow',
+                'required' => false,
+                'type' => 'checkbox',
+                'title' => 'whether Buy It Now is offered',
+                'defaultValue' => 'unchecked',
             ]
         ],
         'By profile' => [
@@ -90,7 +97,7 @@ class KleinanzeigenBridge extends BridgeAbstract
     {
         if ($this->queriedContext === 'By profile') {
             for ($i = 1; $i <= $this->getInput('pages'); $i++) {
-                $html = getSimpleHTMLDOM(self::URI . '/s-bestandsliste.html?userId=' . $this->getInput('userid') . '&pageNum=' . $i . '&sortingField=SORTING_DATE');
+                $html = getSimpleHTMLDOM($this->getURI() . '/s-bestandsliste.html?userId=' . $this->getInput('userid') . '&pageNum=' . $i . '&sortingField=SORTING_DATE');
 
                 $foundItem = false;
                 foreach ($html->find('article.aditem') as $element) {
@@ -106,7 +113,7 @@ class KleinanzeigenBridge extends BridgeAbstract
         if ($this->queriedContext === 'By search') {
             $categoryId = $this->findCategoryId();
             for ($page = 1; $page <= $this->getInput('pages'); $page++) {
-                $searchUrl = self::URI . '/s-suchanfrage.html?' . http_build_query([
+                $searchUrl = $this->getURI() . '/s-suchanfrage.html?' . http_build_query([
                     'keywords' => $this->getInput('query'),
                     'locationStr' => $this->getInput('location'),
                     'locationId' => '',
@@ -115,7 +122,8 @@ class KleinanzeigenBridge extends BridgeAbstract
                     'categoryId' => $categoryId,
                     'pageNum' => $page,
                     'maxPrice' => $this->getInput('maxprice'),
-                    'minPrice' => $this->getInput('minprice')
+                    'minPrice' => $this->getInput('minprice'),
+                    'buyNowEnabled' => $this->getInput('buyNowEnabled'),
                 ]);
 
                 $html = getSimpleHTMLDOM($searchUrl);
@@ -136,24 +144,56 @@ class KleinanzeigenBridge extends BridgeAbstract
     {
         $item = [];
 
-        $item['uid'] = $element->getAttribute('data-adid');
-        $item['uri'] = self::URI . $element->getAttribute('data-href');
+        $item['content'] = '';
 
-        $item['title'] = $element->find('h2', 0)->plaintext;
-        $item['timestamp'] = $element->find('div.aditem-main--top--right', 0)->plaintext;
-        $imgUrl = str_replace(
-            'rule=$_2.JPG',
-            'rule=$_57.JPG',
-            str_replace(
-                'rule=$_35.JPG',
-                'rule=$_57.JPG',
-                $element->find('img', 0) ? $element->find('img', 0)->getAttribute('src') : ''
-            )
-        ); //enhance img quality
-        $textContainer = $element->find('div.aditem-main', 0);
-        $textContainer->find('a', 0)->href = self::URI . $textContainer->find('a', 0)->href; // add domain to url
-        $item['content'] = '<img src="' . $imgUrl . '"/>' .
-        $textContainer->outertext;
+        $json = $element->find('.aditem-image > script', 0);
+        if ($json) {
+            $data = json_decode($json->innertext, true);
+            $item['title'] = $data['title'];
+            $item['content'] .= '<div><p>' . $data['description'] . '</div></p></br>';
+        } else {
+            $item['title'] = $element->find('h2', 0)->plaintext;
+            $item['content'] .= $element->find('.aditem-main--middle--description');
+        }
+
+        if ($element->find('.aditem-main--top', 0)) {
+            $item['content'] .= $element->find('.aditem-main--top', 0);
+        }
+
+        if ($element->find('.aditem-main--middle--price-shipping', 0)) {
+            $item['content'] .= preg_replace(
+                '#(<p\s+class="aditem-main--middle--price-shipping--old-price"[^>]*>.*?</p>)#si',
+                '<s>$1</s>',
+                $element->find('.aditem-main--middle--price-shipping', 0)
+            );
+        }
+
+        if ($element->find('.aditem-main--bottom', 0)) {
+            $item['content'] .= $element->find('.aditem-main--bottom', 0);
+        }
+
+        $item['content'] = sanitize($item['content']);
+
+        $item['uid'] = $element->getAttribute('data-adid');
+        $item['uri'] = urljoin($this->getURI(), $element->getAttribute('data-href'));
+
+        $dateString = trim($element->find('div.aditem-main--top--right', 0)->plaintext);
+        if ($dateString) {
+                $dateString = str_ireplace(
+                    ['Gestern', 'Heute'],
+                    ['yesterday', 'today'],
+                    $dateString
+                );
+
+                $item['timestamp'] = strtotime($dateString);
+        } else {
+            $item['timestamp']  = time();
+        }
+
+        if ($element->find('img', 0)) {
+            //enhance img quality. Cannot use convertLazyLoading() here due to non-standard URI suffix in srcset.
+            $item['enclosures'] = [preg_replace('/rule=\$_\d+\.AUTO/i', 'rule=$_57.AUTO', $element->find('img', 0)->getAttribute('src')) . '#.image'];
+        };
 
         $this->items[] = $item;
     }
@@ -161,7 +201,7 @@ class KleinanzeigenBridge extends BridgeAbstract
     private function findCategoryId()
     {
         if ($this->getInput('category')) {
-            $html = getSimpleHTMLDOM(self::URI . '/s-kategorie-baum.html');
+            $html = getSimpleHTMLDOM($this->getURI() . '/s-kategorie-baum.html');
             foreach ($html->find('a[data-val]') as $element) {
                 $catId = (int)$element->getAttribute('data-val');
                 $catName = $element->plaintext;

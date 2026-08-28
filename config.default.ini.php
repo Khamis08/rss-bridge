@@ -6,6 +6,9 @@
 
 [system]
 
+; System environment: "dev" or "prod"
+env = "prod"
+
 ; Only these bridges are available for feed production
 ; How to enable all bridges: enabled_bridges[] = *
 ;enabled_bridges[] = CssSelectorBridge
@@ -30,13 +33,6 @@ timezone = "UTC"
 
 ; Display a system message to users.
 ;message = "Hello world"
-
-; Whether to enable debug mode.
-enable_debug_mode = false
-
-; Enable debug mode only for these permitted ip addresses
-; debug_mode_whitelist[] = 127.0.0.1
-; debug_mode_whitelist[] = 192.168.1.10
 
 ; Whether to enable maintenance mode. If enabled, feed requests receive 503 Service Unavailable
 enable_maintenance_mode = false
@@ -70,6 +66,12 @@ type = "file"
 ; true  = enabled
 ; false = disabled (default)
 custom_timeout = false
+
+[logging]
+
+;file_path = "/var/log/rss-bridge.log"
+; DEBUG, INFO, WARNING or ERROR
+;file_level = "INFO"
 
 [admin]
 
@@ -135,6 +137,18 @@ output = "feed"
 
 ; Defines how often an error must occur before it is reported to the user
 report_limit = 1
+
+[youtube]
+
+; Whether to use an iframe to directly embed YouTube videos in feeds.
+; If false, a clickable video thumbnail is used instead. This avoids sending a referrer to YouTube or only getting the error 153 if suppressing the referrer browser-wide.
+iframe = true
+
+; Use the youtube-nocookie.com domain instead of youtube.com for iframe embeds.
+; Only relevant if youtube.iframe is true.
+; See the following for a description:
+; https://support.google.com/youtube/answer/171780?hl=en#zippy=%2Cturn-on-privacy-enhanced-mode
+nocookie = false
 
 ; --- Cache specific configuration ---------------------------------------------
 
